@@ -1,0 +1,30 @@
+{
+	"recommendations": [
+		// language support
+		"mf.vscode-styled-components",
+		"redhat.vscode-xml",
+
+		// formatters, linters
+		"stylelint.vscode-stylelint",
+		"oxc.oxc-vscode",
+
+		// typescript helpers
+		"mylesmurphy.prettify-ts",
+		"yoavbls.pretty-ts-errors",
+		"typescriptteam.native-preview",
+
+		// other utitlities
+		"Soulcode.vscode-unwanted-extensions", // notify about unwanted extensions
+		"naumovs.color-highlight", // highlight colors in the editor
+		"unpacksoftware.run-it", // restarts TypeScript when generated types change
+		"actboy168.tasks" // adds a button to the status bar for project tasks
+	],
+	"unwantedRecommendations": [
+		// built into VS Code
+		"formulahendry.auto-rename-tag",
+		// built into VS Code
+		"formulahendry.auto-complete-tag",
+		// abandoned
+		"styled-components.vscode-styled-components"
+	]
+}

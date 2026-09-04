@@ -1,0 +1,264 @@
+import type { Metadata } from "next"
+import type { MainPageQueryResult } from "sanity.types"
+
+import InitialHeaderMode from "app/lib/InitialHeaderMode"
+import { resolveMetaTitle } from "app/lib/metadata"
+import BlogArticleSection from "app/sections/BlogArticle"
+import BlogHubSection from "app/sections/BlogHub"
+import FaqSection from "app/sections/Faq"
+import SampleSection from "app/sections/Sample"
+import { PageCommitSignal } from "library/link/usePageTransition"
+import { assetMetadataFunctions } from "library/sanity/assetMetadata"
+import { resolveDocumentTitle, resolveProductionUrl } from "library/sanity/document-helpers"
+import {
+	getSanityDataAttribute,
+	type SanityDataAttributeContext,
+} from "library/sanity/getSanityDataAttribute"
+import { resolveOpenGraphImage } from "library/sanity/opengraph"
+import { Redirect } from "library/sanity/redirect"
+import { siteURL } from "library/siteURL"
+import { EagerImages } from "library/StaticImage"
+import { defineQuery } from "next-sanity"
+import { notFound } from "next/navigation"
+import { Fragment, Suspense } from "react"
+import { sanityFetch } from "sanity/lib/live"
+import { sectionProjection } from "sanity/lib/section-projection"
+import { documentPathProjection } from "sanity/lib/slug-resolver"
+
+// Stated rather than inherited: a page missing from generateStaticParams must still render
+// on request (editors publish without a deploy), and cached output is invalidated by
+// Sanity's sync tags through the live proxy rather than on a timer.
+export const dynamicParams = true
+export const revalidate = false
+
+type PageSection = NonNullable<NonNullable<MainPageQueryResult>["sections"]>[number]
+type SectionTypes = PageSection["_type"]
+
+type WithExtraProps<T> = T & {
+	pageTitle: string
+	sanityDataAttribute: SanityDataAttributeContext
+}
+
+export type GetSectionType<T extends SectionTypes> = WithExtraProps<
+	Extract<PageSection, { _type: T }>
+>
+
+const mainPageQuery = defineQuery(`
+	${assetMetadataFunctions}
+
+	*[_type == "page" && ${documentPathProjection("@")} == $pathname][0] {
+		...,
+		metaTitle,
+		description,
+		ogImage,
+		"mainImage": reform::image(mainImage),
+		sections[] {
+			...,
+			${sectionProjection}
+		}
+	}
+`)
+
+const mainPageSlugsQuery = defineQuery(`
+  *[_type == "page" && ${documentPathProjection("@")} != null] {
+    _id,
+    "path": ${documentPathProjection("@")}
+  }
+`)
+
+const mainPageSettingsQuery = defineQuery(`*[_type == "settings"][0]`)
+
+// The root of this optional catch-all can arrive as several different shapes:
+// undefined normally, ["index"] during ISR regeneration (Next's on-disk name for the
+// root — normalizePagePath turns "/" into "/index", so they are the same cache entry),
+// and degenerate empties like [] or [""]. All of them mean the root. Joining without
+// normalizing turns "index" into the pathname "/index", which matches no document and
+// would cache a 404 on the homepage.
+function resolvePathname(slug: string[] | undefined) {
+	const joined = slug?.filter(Boolean).join("/")
+	if (!joined || joined === "index") return "/"
+	return `/${joined}`
+}
+
+export async function generateStaticParams() {
+	const { data } = await sanityFetch({
+		query: mainPageSlugsQuery,
+		perspective: "published",
+		disableStega: true,
+	})
+	return data.map((item) => ({
+		slug: item.path === "/" ? undefined : item.path?.replace(/^\/+/, "").split("/"),
+	}))
+}
+
+export async function generateMetadata({ params }: PageProps<"/[[...slug]]">): Promise<Metadata> {
+	const pathname = resolvePathname((await params).slug)
+
+	const [{ data: relevantPage }, { data: settings }] = await Promise.all([
+		sanityFetch({
+			query: mainPageQuery,
+			params: { pathname },
+			disableStega: true,
+		}),
+		sanityFetch({
+			query: mainPageSettingsQuery,
+			disableStega: true,
+		}),
+	])
+
+	const canonicalUrl = resolveProductionUrl(relevantPage)
+	const canonicalTitle = resolveMetaTitle({
+		title: relevantPage?.metaTitle || resolveDocumentTitle(relevantPage),
+		separator: settings?.metaTitleSeparator,
+		suffix: settings?.defaultTitle,
+	})
+	const isArticle = relevantPage?.kind === "hubDetail"
+	const canonicalDescription =
+		relevantPage?.description ||
+		(isArticle ? relevantPage.articleTextPreview : undefined) ||
+		settings?.defaultDescription
+
+	// an article's main image is its social image unless one was set explicitly
+	const image = relevantPage?.ogImage
+		? resolveOpenGraphImage(relevantPage.ogImage)
+		: isArticle && relevantPage.mainImage
+			? resolveOpenGraphImage(relevantPage.mainImage)
+			: settings?.ogImage
+				? resolveOpenGraphImage(settings?.ogImage)
+				: undefined
+	const imageList = image ? [image] : undefined
+
+	return {
+		metadataBase: siteURL,
+		title: canonicalTitle,
+		description: canonicalDescription,
+		openGraph: {
+			type: isArticle ? "article" : "website",
+			publishedTime: (isArticle && relevantPage.publishedAt) || undefined,
+			url: canonicalUrl,
+			siteName: settings?.defaultTitle ?? undefined,
+			images: imageList,
+		},
+		twitter: {
+			card: "summary_large_image",
+			images: imageList,
+		},
+		alternates: {
+			canonical: canonicalUrl,
+		},
+	}
+}
+
+export default async function TemplatePage({ params }: PageProps<"/[[...slug]]">) {
+	const pathname = resolvePathname((await params).slug)
+	const { data: relevantPage } = await sanityFetch({
+		query: mainPageQuery,
+		params: { pathname },
+	})
+
+	if (!relevantPage) notFound()
+
+	const pageTitle = resolveDocumentTitle(relevantPage)
+	if (!pageTitle) notFound()
+
+	// A published page with no sections yet is empty, not missing. 404ing it would cache a
+	// 404 for a URL that exists — and an editor adding the first section to a blog hub
+	// would be racing that cached entry.
+	const sections: PageSection[] = relevantPage.sections ?? []
+
+	// seed the header's theme from the first section, so it is correct on the frame after
+	// navigation instead of flashing the default until the observer catches up
+	const firstSection = sections[0]
+	const initialHeaderMode =
+		firstSection && "headerMode" in firstSection ? firstSection.headerMode : undefined
+
+	const pageDataAttribute = getSanityDataAttribute(
+		{
+			documentId: relevantPage._id,
+			documentType: "page",
+			pathPrefix: "",
+		},
+		"sections",
+	)
+
+	// A suspended section commits after this signal would fire, so the page transition
+	// would reveal it before its content rendered. Those sections signal commit
+	// themselves, from inside their own boundary.
+	const sectionOwnsCommitSignal = sections.some((section) => section._type === "blogHub")
+
+	return (
+		<>
+			{!sectionOwnsCommitSignal && <PageCommitSignal />}
+			<InitialHeaderMode headerMode={initialHeaderMode} />
+			{relevantPage.noIndex ? <meta name="robots" content="noindex, nofollow" /> : null}
+			{/* Register this page document with Presentation Tool's "Documents on this page" panel.
+			    Without this, pages whose sections have no text (e.g. image-only) are invisible to the panel. */}
+			<div hidden data-sanity={pageDataAttribute} />
+			{sections.map((section, index: number) => {
+				const Wrapper = index === 0 ? EagerImages : Fragment
+
+				const sectionContext = {
+					pageTitle,
+					sanityDataAttribute: {
+						documentId: relevantPage._id,
+						documentType: relevantPage._type,
+						pathPrefix: `sections[${index}]`,
+					},
+				}
+
+				switch (section._type) {
+					case "sample":
+						return (
+							<Wrapper key={section._key}>
+								<SampleSection {...section} {...sectionContext} />
+							</Wrapper>
+						)
+					case "faq":
+						return (
+							<Wrapper key={section._key}>
+								<FaqSection {...section} {...sectionContext} />
+							</Wrapper>
+						)
+					case "blogHub":
+						return (
+							<Wrapper key={section._key}>
+								{/* required: the hub's filters read search params, which cannot be
+								    prerendered. the section signals page commit itself from inside this
+								    boundary, so the transition does not reveal an empty hub. */}
+								<Suspense>
+									<BlogHubSection
+										{...section}
+										{...sectionContext}
+										hubSlug={relevantPage.slug?.current ?? ""}
+									/>
+								</Suspense>
+							</Wrapper>
+						)
+					case "blogArticle":
+						return (
+							<Wrapper key={section._key}>
+								<BlogArticleSection
+									{...section}
+									{...sectionContext}
+									pageId={relevantPage._id}
+									title={relevantPage.title}
+									articleTextPreview={relevantPage.articleTextPreview}
+									publishedAt={relevantPage.publishedAt}
+								/>
+							</Wrapper>
+						)
+					case "redirect":
+						return (
+							<Wrapper key={section._key}>
+								<Redirect {...section} {...sectionContext} />
+							</Wrapper>
+						)
+					default:
+						// if you get an error here you are missing a section above
+						section satisfies never
+						return null
+				}
+			})}
+		</>
+	)
+}

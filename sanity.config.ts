@@ -1,0 +1,289 @@
+/**
+ * This config is used to set up Sanity Studio that's mounted on the `app/(sanity)/studio/[[...tool]]/page.tsx` route
+ */
+
+import { assist } from "@sanity/assist"
+import { codeInput } from "@sanity/code-input"
+import { DesktopIcon, RocketIcon, UserIcon } from "@sanity/icons"
+import { visionTool } from "@sanity/vision"
+import { env } from "app/env"
+import gsap from "gsap/all"
+import { staticLinkType } from "library/link/staticLinkType"
+import {
+	getLinkableTypes,
+	resolveDocumentLocations,
+	resolveProductionUrl,
+} from "library/sanity/document-helpers"
+import { faqItem, video, youtube } from "library/sanity/reusables"
+import { pageStructure, singletonPlugin } from "library/sanity/singletonPlugin"
+import { siteURL } from "library/siteURL"
+import { defineConfig, type PluginOptions } from "sanity"
+import { unsplashImageAsset } from "sanity-plugin-asset-source-unsplash"
+import { linkField } from "sanity-plugin-link-field"
+import { media } from "sanity-plugin-media"
+import { muxInput } from "sanity-plugin-mux-input"
+import { apiVersion, dataset, projectId, studioUrl } from "sanity/lib/api"
+import { presentationTool } from "sanity/presentation"
+import { blogAuthorType } from "sanity/schemas/blog/authorType"
+import { blogBlockContentType } from "sanity/schemas/blog/blockContentType"
+import { blogCategoryType } from "sanity/schemas/blog/categoryType"
+import { logoSet } from "sanity/schemas/documents/logoSet"
+import page from "sanity/schemas/sanityPage"
+import footer from "sanity/schemas/singletons/footer"
+import header from "sanity/schemas/singletons/header"
+import settings from "sanity/schemas/singletons/settings"
+import { defaultIntentChecker, structureTool } from "sanity/structure"
+
+// if GSAP tries to run during manifest generation it might fail in prod
+gsap.ticker.sleep()
+
+const singletons = [settings, header, footer]
+
+export default defineConfig({
+	/**
+	 * workspace properties
+	 * @see https://www.sanity.io/docs/studio/configuration#k781e9f7dc1c2
+	 */
+	// ⬇ Required
+	dataset,
+	projectId,
+	basePath: studioUrl,
+	// ⬇ Optional
+	title: "TODO - name the studio",
+	subtitle: "subtitle",
+	icon: RocketIcon,
+
+	/**
+	 * schema types to include
+	 * @see https://www.sanity.io/docs/studio/configuration#k1ed5d17ef21e
+	 */
+	schema: {
+		types: [
+			// singletons
+			...singletons,
+
+			// reusables
+			youtube,
+			video,
+			/**
+			 * controls what editors can put in an FAQ answer, for THIS project.
+			 * defaults to bold, italic, bulleted + numbered lists, and links.
+			 *
+			 * trim it to match the design — e.g. `faqItem({ lists: [] })` if there is
+			 * no list treatment, or `faqItem({ decorators: [] })` for plain text. each
+			 * option replaces its default list rather than merging, so an empty array
+			 * drops a whole category, and dropping one mark means listing the keepers.
+			 *
+			 * do that before editors author content. adding a mark later is safe;
+			 * removing one leaves existing answers still rendering it, with no Studio
+			 * control to apply or clear it.
+			 */
+			// The whole megillah
+			faqItem(),
+
+			// plain paragraphs and links, nothing else
+			// faqItem({ lists: [], decorators: [] }),
+
+			// no links in answers
+			// faqItem({ annotations: [] }),
+
+			// italic only — each option replaces its default list, so drop a single
+			// mark by passing the ones you keep, not the one you want gone
+			// faqItem({ decorators: [{ title: "Italic", value: "em" }] }),
+
+			// Subheading and regular text
+			// faqItem({
+			// 	styles: [
+			// 		{ title: "Normal", value: "normal" },
+			// 		{ title: "Heading", value: "h3" },
+			// 	],
+			// 	lists: [],
+			// 	decorators: [],
+			// }),
+
+			// blog schemas
+			blogAuthorType,
+			blogBlockContentType,
+			blogCategoryType,
+
+			// shared content, referenced from sections rather than owned by one
+			logoSet,
+
+			// project schemas
+			page,
+		],
+	},
+
+	/**
+	 * document actions and badges
+	 * @see https://www.sanity.io/docs/studio/configuration#f9bb2e4a3c59
+	 */
+	document: {
+		productionUrl: async (_, context) => {
+			return resolveProductionUrl(context.document)
+		},
+	},
+
+	/**
+	 * plugins!
+	 */
+	plugins: [
+		// ===============================
+		// tool plugins
+		// ===============================
+
+		/**
+		 * presentation tool, for live previews of draft content
+		 * @see https://www.sanity.io/docs/visual-editing/configuring-the-presentation-tool
+		 */
+		presentationTool({
+			previewUrl: {
+				initial: siteURL,
+				previewMode: {
+					enable: "/api/draft-mode/enable",
+					disable: "/api/draft-mode/disable",
+				},
+			},
+			allowOrigins: ["http://localhost:*"],
+			resolve: { locations: resolveDocumentLocations },
+			title: "Live Preview",
+		}),
+
+		/**
+		 * structure tool
+		 * @see https://www.sanity.io/docs/studio/structure-tool
+		 */
+		structureTool({
+			title: "All Content",
+			structure: pageStructure(singletons, [
+				{
+					item: (S) =>
+						S.listItem()
+							.title("Pages")
+							.icon(DesktopIcon)
+							.child(
+								S.list()
+									.title("Pages")
+									.items([
+										S.listItem()
+											.title("All Pages")
+											.child(
+												S.documentList()
+													.title("All Pages")
+													.filter('_type == "page"')
+													.defaultOrdering([{ field: "slug.current", direction: "asc" }]),
+											),
+										S.divider(),
+										S.listItem()
+											.title("Standard Pages")
+											.child(
+												S.documentList()
+													.title("Standard Pages")
+													.schemaType("page")
+													// pages predating the kind field have none, and are standard pages
+													.filter('_type == "page" && (kind == "page" || !defined(kind))')
+													.defaultOrdering([{ field: "slug.current", direction: "asc" }])
+													// keeps creation in this pane rather than routing it elsewhere
+													.canHandleIntent(defaultIntentChecker),
+											),
+										S.listItem()
+											.title("Hubs")
+											.child(
+												// hubs and their pages in one flat list. ordering by slug puts each hub
+												// directly above its own pages, since a hub's slug is their prefix
+												S.documentList()
+													.title("Hubs")
+													.schemaType("page")
+													.filter('_type == "page" && (kind == "hub" || kind == "hubDetail")')
+													.defaultOrdering([{ field: "slug.current", direction: "asc" }])
+													// without this, creating a page resolves to the page type's default
+													// location and replaces the whole pane stack
+													.canHandleIntent(defaultIntentChecker),
+											),
+									]),
+							),
+					hiddenTypes: ["page"],
+				},
+				{
+					/**
+					 * Documents that live outside the page tree and are referenced from more than
+					 * one place — authors, categories, icon sets, testimonials. Grouped by domain
+					 * so a project that drops the blog removes one child rather than picking
+					 * entries out of a flat list.
+					 */
+					item: (S) =>
+						S.listItem()
+							.title("Shared Content")
+							.icon(UserIcon)
+							.child(
+								S.list()
+									.title("Shared Content")
+									.items([
+										S.documentTypeListItem("logoSet").title("Logo Sets"),
+										S.divider(),
+										S.listItem()
+											.title("Blog")
+											.child(
+												S.list()
+													.title("Blog")
+													.items([
+														S.documentTypeListItem("blogAuthor").title("Authors"),
+														S.documentTypeListItem("blogCategory").title("Categories"),
+													]),
+											),
+									]),
+							),
+					hiddenTypes: ["blogAuthor", "blogCategory", "logoSet"],
+				},
+			]),
+		}),
+
+		/**
+		 * media tool
+		 * @see https://www.sanity.io/plugins/sanity-plugin-media
+		 */
+		media(),
+
+		/**
+		 * video tool
+		 * @see https://www.sanity.io/plugins/sanity-plugin-mux-input
+		 */
+		muxInput({ max_resolution_tier: "2160p" }),
+
+		/**
+		 * vision tool
+		 * @see https://www.sanity.io/docs/content-lake/the-vision-plugin
+		 */
+		env.NODE_ENV === "development" && visionTool({ defaultApiVersion: apiVersion }),
+
+		// ===============================
+		// non-tool plugins
+		// ===============================
+
+		/**
+		 * adds a link field that allows you to link to other documents
+		 * @see https://www.sanity.io/plugins/sanity-plugin-link-field
+		 */
+		linkField({
+			linkableSchemaTypes: getLinkableTypes(),
+			customLinkTypes: [staticLinkType()],
+			enabledBuiltInLinkTypes: ["internal", "external", "email", "phone", "sms", "document"],
+		}),
+		/**
+		 * our custom singleton plugin
+		 */
+		singletonPlugin(singletons.map((singleton) => singleton.name)),
+		/**
+		 * adds unsplash as an image asset source
+		 */
+		unsplashImageAsset(),
+		/**
+		 * adds AI assist
+		 */
+		assist(),
+		/**
+		 * adds syntax-highlighted code input
+		 */
+		codeInput(),
+	].filter(Boolean) as PluginOptions[],
+})
