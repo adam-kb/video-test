@@ -13,6 +13,8 @@ const nextConfig: NextConfig = {
 		viewTransition: true,
 	},
 
+	allowedDevOrigins: ["192.168.0.156"],
+
 	images: {
 		qualities: [90],
 	},
@@ -28,6 +30,9 @@ const nextConfig: NextConfig = {
 				loaders: [{ loader: "@svgr/webpack", options: { ssr: true } }],
 				as: "*.js",
 			},
+			// importing video files gives you a URL to the emitted file
+			"*.webm": { type: "asset" },
+			"*.mp4": { type: "asset" },
 		},
 	},
 }
