@@ -13,18 +13,19 @@ export default function Header({ headerText }: NonNullable<HeaderQueryResult>) {
 
 	// both hooks share the ref: useAutoHideHeader writes data-header-scrolled and
 	// --site-header-height onto it, useSectionTheme measures it to place its observer strip
-	useAutoHideHeader(wrapperRef)
-	useSectionTheme(wrapperRef)
-	const mode = useHeaderMode()
+	// useAutoHideHeader(wrapperRef)
+	// useSectionTheme(wrapperRef)
+	// const mode = useHeaderMode()
 
 	return (
-		<Wrapper ref={wrapperRef} data-mode={mode}>
-			<Background />
-			<Inner>
-				<div>Header</div>
-				<p>{headerText}</p>
-			</Inner>
-		</Wrapper>
+		// <Wrapper ref={wrapperRef} >
+		// 	<Background />
+		// 	<Inner>
+		// 		<div>Header</div>
+		// 		<p>{headerText}</p>
+		// 	</Inner>
+		// </Wrapper>
+		<></>
 	)
 }
 
