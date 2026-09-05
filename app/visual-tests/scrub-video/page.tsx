@@ -8,6 +8,7 @@ import s2Webm from "app/sections/section2/assets/GoAI_SC2_OUT_V_v16-scrub.webm"
 import s2Source from "app/sections/section2/assets/GoAI_SC2_OUT_V_v16.webm"
 import textStyles from "app/styles/text"
 import { useCssBend } from "app/visual-tests/scrub-video/CssBend"
+import HeroIntro from "app/visual-tests/scrub-video/HeroIntro"
 import gsap from "gsap/all"
 import { PageCommitSignal } from "library/link/usePageTransition"
 import { css, f, styled } from "library/styled"
@@ -96,6 +97,12 @@ export default function ScrubVideoTestPage() {
 				</Drawer>
 			</Controls>
 
+			<Eyebrow>
+				<span>GO.OS</span>
+				<span>ON-PREM</span>
+				<span>GOVERNED</span>
+			</Eyebrow>
+
 			{clips.map((clip, index) => {
 				// only section 1 has a sequence; section 2 falls back to h.264
 				const sequence = index === 0 && isSequence(format) ? sequences[format] : undefined
@@ -109,7 +116,12 @@ export default function ScrubVideoTestPage() {
 						src={videoSrc}
 						sequence={sequence}
 					>
-						{index === 0 && <StatsOverlay technique={technique} />}
+						{index === 0 && (
+							<>
+								<HeroIntro />
+								<StatsOverlay technique={technique} />
+							</>
+						)}
 					</ScrubSection>
 				)
 			})}
@@ -335,6 +347,28 @@ function StatsOverlay({ technique }: { technique: Technique }) {
 		</Stats>
 	)
 }
+
+/**
+ * fixed rather than per-section: this strip is present on every frame of the
+ * reference, so it outlives whatever section is passing behind it
+ */
+const Eyebrow = styled("div", [
+	f.responsive(css`
+		position: fixed;
+		z-index: 3;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		display: flex;
+		justify-content: space-between;
+		padding: 24px;
+		${textStyles.p2};
+		color: #8a8c94;
+		letter-spacing: 0.08em;
+		pointer-events: none;
+		mix-blend-mode: difference;
+	`),
+])
 
 const Page = styled("div", [
 	f.unresponsive(css`
@@ -583,6 +617,21 @@ const Body = styled("p", {
 					text-decoration-color: ${accent};
 					text-decoration-thickness: 1.5px;
 					text-underline-offset: 6px;
+
+					/* the fold transforms and fades the CHARACTERS, never this
+					   paragraph — so a decoration painted here keeps hanging in the air
+					   after every glyph above it has gone, as a row of loose dashes.
+					   while the copy is split, let the glyphs carry it instead. */
+					&:has(.foldChar) {
+						text-decoration: none;
+					}
+
+					& .foldChar {
+						text-decoration: underline;
+						text-decoration-color: ${accent};
+						text-decoration-thickness: 1.5px;
+						text-underline-offset: 6px;
+					}
 				`),
 			],
 			false: [],

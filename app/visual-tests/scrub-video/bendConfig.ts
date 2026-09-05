@@ -61,9 +61,21 @@ export const BLOCK_STAGGER = 0.1
  *   the gap between them is the duration, so moving one end alone also changes
  *   the speed; move both by the same amount to reschedule without respeeding.
  *
- * currently frames 79 -> 119 of 199, a 40-frame reveal.
+ * frames 206 -> 251 of the source, 6.86s -> 8.37s of the 14s clip.
  */
 export const REVEAL = { start: 0.49, end: 0.598 }
+
+/**
+ * the opening copy's life, also in clip progress. it rises in over the dark
+ * appliance, holds while the shot develops, then lifts away and blurs out
+ * before the stats begin at REVEAL.start.
+ *
+ *   in    0.03 -> 0.12   frames 13 -> 50    0.4s -> 1.7s
+ *   hold  0.12 -> 0.18                      a beat at rest
+ *   out   0.18 -> 0.25   frames 76 -> 105   2.5s -> 3.5s
+ */
+export const HERO_IN = { start: 0.2, end: 0.28 }
+export const HERO_OUT = { start: 0.31, end: 0.34 }
 
 /**
  * spans the whole section, matching the artwork's scrub, so both read the same

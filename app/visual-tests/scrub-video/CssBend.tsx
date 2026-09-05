@@ -78,6 +78,9 @@ export function useCssBend(root: RefObject<HTMLDivElement | null>, enabled: bool
 
 				const split = SplitText.create(block.querySelectorAll("[data-bend]"), {
 					type: "words,chars",
+					// page.tsx hangs the underline decoration off this class so it
+					// travels with the glyphs instead of the paragraph
+					charsClass: "foldChar",
 				})
 				splits.push(split)
 
