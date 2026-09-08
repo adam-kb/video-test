@@ -16,6 +16,7 @@ import { useAnimation } from "library/useAnimation"
 import { Suspense, lazy, useRef, useState } from "react"
 
 const WebglBend = lazy(() => import("app/visual-tests/scrub-video/WebglBend"))
+const HeroWarp = lazy(() => import("app/visual-tests/scrub-video/HeroWarp"))
 const SequencePlayer = lazy(() => import("app/visual-tests/scrub-video/SequencePlayer"))
 
 const formats = {
@@ -45,6 +46,13 @@ const sequences: Record<SequenceKey, Sequence> = {
 
 const isSequence = (format: Format): format is SequenceKey => format in sequences
 
+const heroes = {
+	dom: "hero · dom + svg displace",
+	webgl: "hero · webgl warped plane",
+} as const
+
+type Hero = keyof typeof heroes
+
 const techniques = {
 	slide: "slide · transform only",
 	css3d: "css 3d · splittext lines",
@@ -61,6 +69,7 @@ const clips = [
 export default function ScrubVideoTestPage() {
 	const [format, setFormat] = useState<Format>("mp4")
 	const [technique, setTechnique] = useState<Technique>("css3d")
+	const [hero, setHero] = useState<Hero>("dom")
 
 	return (
 		<Page>
@@ -94,6 +103,18 @@ export default function ScrubVideoTestPage() {
 							</FormatButton>
 						))}
 					</ControlRow>
+					<ControlRow>
+						{Object.entries(heroes).map(([key, label]) => (
+							<FormatButton
+								key={key}
+								type="button"
+								active={key === hero}
+								onClick={() => setHero(key as Hero)}
+							>
+								{label}
+							</FormatButton>
+						))}
+					</ControlRow>
 				</Drawer>
 			</Controls>
 
@@ -118,7 +139,13 @@ export default function ScrubVideoTestPage() {
 					>
 						{index === 0 && (
 							<>
-								<HeroIntro />
+								{hero === "webgl" ? (
+									<Suspense fallback={null}>
+										<HeroWarp />
+									</Suspense>
+								) : (
+									<HeroIntro />
+								)}
 								<StatsOverlay technique={technique} />
 							</>
 						)}

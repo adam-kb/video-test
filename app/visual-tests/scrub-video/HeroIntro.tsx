@@ -39,6 +39,22 @@ const CLOTH_SWEEP = 0.16
 const CLOTH_DEPTH = 18
 
 /**
+ * peak displacement of the cloth warp, in px. this is the real one: an svg
+ * feTurbulence feeding an feDisplacementMap, which pushes every pixel of the
+ * rendered text sideways by an amount sampled from a noise field. unlike the
+ * per-character lag above it is genuinely continuous — glyphs bend and stretch
+ * within themselves rather than staying rigid and merely arriving late.
+ *
+ * set to 0 to switch it off; it is by far the most expensive thing on the page.
+ */
+const CLOTH_WARP = 0
+
+/**
+ * size of the noise cells. smaller = broad slow billow, larger = tight ripple.
+ */
+const CLOTH_SCALE = 0.014
+
+/**
  * the opening copy, overlaid on the artwork rather than stacked above it — it
  * belongs to the same section, early in the clip, before the stats arrive.
  */
@@ -69,6 +85,41 @@ export default function HeroIntro({ replayable = false }: { replayable?: boolean
 
 			const timeline = gsap.timeline({ paused: true })
 			const blocks = [...split.lines, ...el.querySelectorAll("[data-rise-block]")]
+
+			// the warp rides on top of everything else: it starts fully displaced,
+			// resolves to nothing as the copy lands, and comes back for the exit.
+			// animating the primitive's `scale` attribute is what actually moves it.
+			const displace = el.parentElement?.querySelector("[data-cloth-displace]")
+			const noise = el.parentElement?.querySelector("[data-cloth-noise]")
+
+			if (displace && CLOTH_WARP > 0) {
+				timeline
+					.fromTo(
+						displace,
+						{ attr: { scale: CLOTH_WARP } },
+						{ attr: { scale: 0 }, duration: inDuration, ease: "power2.out" },
+						0,
+					)
+					.to(
+						displace,
+						{ attr: { scale: CLOTH_WARP }, duration: outDuration, ease: "power2.in" },
+						outAt,
+					)
+
+				// drifting the noise field is what makes it read as cloth in motion
+				// rather than a static piece of crumpled paper
+				if (noise)
+					timeline.fromTo(
+						noise,
+						{ attr: { baseFrequency: CLOTH_SCALE } },
+						{
+							attr: { baseFrequency: CLOTH_SCALE * 2.4 },
+							duration: 1,
+							ease: "none",
+						},
+						0,
+					)
+			}
 
 			blocks.forEach((line, index) => {
 				const chars = line.querySelectorAll(".chr")
@@ -158,7 +209,38 @@ export default function HeroIntro({ replayable = false }: { replayable?: boolean
 				</Replay>
 			)}
 
-			<Copy ref={scope}>
+			{CLOTH_WARP > 0 && (
+				<FilterDefs aria-hidden viewBox="0 0 1 1">
+					<title>cloth warp</title>
+					<filter
+						id="heroCloth"
+						x="-20%"
+						y="-20%"
+						width="140%"
+						height="140%"
+						colorInterpolationFilters="sRGB"
+					>
+						<feTurbulence
+							data-cloth-noise
+							type="fractalNoise"
+							baseFrequency={CLOTH_SCALE}
+							numOctaves={2}
+							seed={7}
+							result="noise"
+						/>
+						<feDisplacementMap
+							data-cloth-displace
+							in="SourceGraphic"
+							in2="noise"
+							scale={CLOTH_WARP}
+							xChannelSelector="R"
+							yChannelSelector="G"
+						/>
+					</filter>
+				</FilterDefs>
+			)}
+
+			<Copy ref={scope} warped={CLOTH_WARP > 0}>
 				<Heading data-rise>
 					GO 1 brings
 					<br />
@@ -208,14 +290,35 @@ const Replay = styled("button", [
 	`),
 ])
 
-const Copy = styled("div", [
-	f.responsive(css`
-		display: flex;
-		flex-direction: column;
-		align-items: flex-start;
-		gap: 28px;
+const FilterDefs = styled("svg", [
+	f.unresponsive(css`
+		position: absolute;
+		width: 0;
+		height: 0;
 	`),
 ])
+
+const Copy = styled("div", {
+	base: [
+		f.responsive(css`
+			display: flex;
+			flex-direction: column;
+			align-items: flex-start;
+			gap: 28px;
+		`),
+	],
+	variants: {
+		warped: {
+			true: [
+				f.responsive(css`
+					filter: url(#heroCloth);
+				`),
+			],
+			false: [],
+		},
+	},
+	defaultVariants: { warped: false },
+})
 
 const Heading = styled("h1", [
 	f.responsive(css`
